@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
 
 int START_NUMB = 000001;
 
@@ -16,6 +17,8 @@ int CreateAccount();
 int Deposit();
 int Withdrawal();
 int CheckBalance();
+
+void sigintHandler(int sig_num);
 
 int main() {
 
@@ -41,7 +44,7 @@ int main() {
 		if (n == 4) {
 			CheckBalance();
 		}
-
+		
 		printf("Would you like to continue with the banking transaction? (Y/N) : ");
 		getchar();
 		scanf("%c", &c);
@@ -53,6 +56,7 @@ int CreateAccount() {
 
 	int fd;
 	struct account rec;
+	struct flock lock;
 
 	if ((fd = open("accountDB.txt", O_RDWR | O_CREAT, 0600)) == -1) {
 		perror("accountDB.txt");
@@ -60,8 +64,16 @@ int CreateAccount() {
 	}
 
 	printf("%-9s %-20s %-9s\n", "number", "name", "balance");
-	while (scanf("%d %s %d", &rec.number, rec.name, &rec.balance) == 3) {
-		
+	while (scanf("%d %s %d", &rec.number, rec.name, &rec.balance) == 3) {	
+		lock.l_type = F_WRLCK;
+		lock.l_whence = SEEK_SET;
+		lock.l_start = (rec.number - START_NUMB) * sizeof(rec);
+		lock.l_len = sizeof(rec);
+		if (fcntl(fd, F_SETLKW, &lock) != 0) {
+			perror("Failed to lock the file");
+			exit(3);
+		}
+
 		lseek(fd, (rec.number - START_NUMB) * sizeof(rec), SEEK_SET);
 		if (write(fd, &rec, sizeof(rec)) != sizeof(rec)) {
 			perror("Failed to write to accountDB.txt");
@@ -69,6 +81,9 @@ int CreateAccount() {
 			return 3;
 		}
 
+		lock.l_type = F_UNLCK;
+		fcntl(fd, F_SETLK, &lock);
+		printf("%-9s %-20s %-9s\n", "number", "name", "balance");
 	}
 
 	close(fd);
@@ -116,7 +131,7 @@ int Deposit() {
 		getchar();
 		scanf("%c", &c);
 
-	} while (c == 'Y');
+	} while (c == 'Y' || c == 'y');
 
 	close(fd);
 	return 0;
@@ -163,7 +178,7 @@ int Withdrawal() {
 		getchar();
 		scanf("%c", &c);
 
-	} while (c == 'Y');
+	} while (c == 'Y' || c == 'y');
 
 	close(fd);
 	return 0;
@@ -196,11 +211,12 @@ int CheckBalance() {
 		}
 		else {
 			printf("input error\n");
-			printf("do you want to continue? (Y/N) : ");
-			getchar();
-			scanf("%c", &c);
 		}
-	} while (c == 'Y');
+		printf("do you want to continue? (Y/N) : ");
+		getchar();
+		scanf("%c", &c);
+			
+	} while (c == 'Y' || c == 'y');
 
 	close(fd);
 	return 0;
